@@ -84,7 +84,7 @@ function App() {
   useEffect(() => { if (vidRef.current) vidRef.current.playbackRate = speed; }, [speed, cur && cur.videoUrl]);
 
   // if a ready episode's video file expired on the server, refresh the job
-  const onVideoError = () => { if (item) { setSt(s => ({ ...s, [item.url]: { status: "error", error: "video expired", stale: true } })); setTimeout(() => { setSt(s => { const n = { ...s }; delete n[item.url]; return n; }); }, 50); } };
+  const onVideoError = () => { if (item) { setSt(s => ({ ...s, [item.url]: { status: "error", error: "video expired", stale: true } })); setTimeout(() => { setSt(s => { const n = { ...s }; delete n[item.url]; return n; }); setTimeout(() => ensure(item.url), 50); }, 50); } };
 
   const onTime = useCallback(() => {
     const t = vidRef.current ? vidRef.current.currentTime : 0;
