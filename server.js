@@ -275,6 +275,22 @@ app.post("/api/process", async (req, res) => {
   res.json({ id });
 });
 
+// Expand a YouTube playlist / channel-playlist link into its video URLs.
+app.post("/api/expand", async (req, res) => {
+  const url = extractVideoUrl(String((req.body || {}).url || ""));
+  if (!url) return res.status(400).json({ error: "Not a link" });
+  try {
+    const out = await run("yt-dlp", ["--flat-playlist", "--no-warnings", "--playlist-end", "60",
+      "--print", "%(id)s|%(title)s|%(url)s", url], { timeout: 60000 });
+    const items = out.trim().split("\n").filter(Boolean).map(l => {
+      const [id, title, u] = l.split("|");
+      return { title: title && title !== "NA" ? title : id,
+        url: /^https?:/.test(u || "") ? u : "https://www.youtube.com/watch?v=" + id };
+    });
+    res.json({ items });
+  } catch (e) { res.status(400).json({ error: friendlyError(e) }); }
+});
+
 app.get("/api/job/:id", (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).json({ error: "job not found" });
