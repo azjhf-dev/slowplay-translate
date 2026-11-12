@@ -3,14 +3,31 @@ const { useState, useRef, useEffect, useCallback } = React;
 
 const LABEL = { queued: "waiting", downloading: "downloading", transcribing: "transcribing", translating: "translating", ready: "ready", error: "failed" };
 const BUSY = ["queued", "downloading", "transcribing", "translating"];
-const LS = "slowplay.playlist.v1";
+const LS = "slowplay.playlist.v2";
+const LEGACY_LS = "slowplay.playlist.v1";
+const LEGACY_SEED_URLS = new Set([
+  "https://www.instagram.com/reel/DaQMhqvsaUB/",
+  "https://www.instagram.com/reel/DfcbWn-Sm2y/",
+  "https://www.instagram.com/reel/Dfhk8hSBI_C/",
+  "https://www.instagram.com/reel/DfmuhtaShBO/"
+]);
 
-function loadSaved() { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } }
+function loadSaved() {
+  try {
+    const current = JSON.parse(localStorage.getItem(LS));
+    if (current) return current;
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_LS)) || {};
+    const previousItems = Array.isArray(legacy.items) ? legacy.items : [];
+    const wasOldSeed = previousItems.length === 4 && previousItems.every(item => LEGACY_SEED_URLS.has(item.url));
+    return previousItems.length && !wasOldSeed ? legacy : {};
+  } catch { return {}; }
+}
 
 function App() {
   const saved = useRef(loadSaved()).current;
   const [items, setItems] = useState(saved.items || []);
   const [listName, setListName] = useState(saved.name || "");
+  const [missingEpisodes, setMissingEpisodes] = useState(saved.missingEpisodes || []);
   const [idx, setIdx] = useState(Math.min(saved.idx || 0, Math.max(0, (saved.items || []).length - 1)));
   const [st, setSt] = useState({});            // url -> {id,status,error,title,language,cues,videoUrl}
   const [speed, setSpeed] = useState(0.7);
@@ -29,11 +46,11 @@ function App() {
   // load seed playlist on first visit
   useEffect(() => {
     if (items.length) return;
-    fetch("/series.json").then(r => r.json()).then(d => { setItems(d.items); setListName(d.name); });
+    fetch("/series.json").then(r => r.json()).then(d => { setItems(d.items); setListName(d.name); setMissingEpisodes(d.missingEpisodes || []); });
   }, []);
   useEffect(() => {
-    localStorage.setItem(LS, JSON.stringify({ items, name: listName, idx }));
-  }, [items, listName, idx]);
+    localStorage.setItem(LS, JSON.stringify({ items, name: listName, idx, missingEpisodes }));
+  }, [items, listName, idx, missingEpisodes]);
 
   const ensure = useCallback(async (url) => {
     const cur = stRef.current[url];
@@ -128,7 +145,7 @@ function App() {
     setItems(items.concat(fresh)); setAdding(""); setAddMsg("Added " + fresh.length + " to the end of the queue.");
     if (!listName) setListName("My playlist");
   };
-  const reset = () => { if (confirm("Reset to the Mastering I'rab series?")) { localStorage.removeItem(LS); location.reload(); } };
+  const reset = () => { if (confirm("Reset to the Mastering I'rab series?")) { localStorage.removeItem(LS); localStorage.removeItem(LEGACY_LS); location.reload(); } };
   const remove = (i) => { const n = items.filter((_, k) => k !== i); setItems(n); if (i < idx) setIdx(idx - 1); else if (i === idx && idx >= n.length) setIdx(Math.max(0, n.length - 1)); };
 
   const nReady = items.filter(i => st[i.url] && st[i.url].status === "ready").length;
@@ -174,6 +191,7 @@ function App() {
     </div>
 
     <div class="meta mt"><b>${listName || "Playlist"}</b> · ${nReady}/${items.length} ready</div>
+    ${missingEpisodes.length > 0 && html`<div class="status">Episode ${missingEpisodes.join(", ")} not found - skipped.</div>`}
     <div class="queue">
       ${items.map((it, i) => {
         const s = st[it.url]; const state = s ? s.status : "";
