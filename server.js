@@ -90,6 +90,51 @@ function run(cmd, args, opts = {}) {
   });
 }
 
+
+// ---- Persistent cue store (private GitHub repo) -------------------------
+// Cues (transcript + timings + English translation) are small JSON, so they
+// are saved per canonical video ID and survive Render restarts. They do not
+// expire (text only). Video files stay on /tmp with the 3h expiry and are
+// simply re-downloaded after a restart. Any GitHub failure falls back to the
+// normal full pipeline.
+const STORE_REPO = process.env.CACHE_REPO || "azjhf-dev/slowplay-cache";
+const STORE_TOKEN = process.env.CACHE_GITHUB_TOKEN || "";
+function storePath(key) { return "cues/" + key.replace(/[^a-zA-Z0-9_-]/g, "_") + ".json"; }
+async function ghFetch(p, opts = {}) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 15000);
+  try {
+    return await fetch("https://api.github.com/repos/" + STORE_REPO + "/contents/" + p, {
+      ...opts, signal: ctl.signal,
+      headers: { "Authorization": "Bearer " + STORE_TOKEN, "Accept": "application/vnd.github+json",
+        "User-Agent": "slowplay-translate", ...(opts.headers || {}) } });
+  } finally { clearTimeout(t); }
+}
+async function storeGet(key) {
+  if (!STORE_TOKEN || !key) return null;
+  try {
+    const r = await ghFetch(storePath(key));
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    const data = JSON.parse(Buffer.from(j.content, "base64").toString("utf8"));
+    return data && Array.isArray(data.cues) && data.cues.length ? data : null;
+  } catch (e) { console.log("[store] get failed (falling back): " + e.message); return null; }
+}
+async function storePut(key, data) {
+  if (!STORE_TOKEN || !key) return;
+  try {
+    const p = storePath(key);
+    let sha;
+    try { const r = await ghFetch(p); if (r.ok) sha = (await r.json()).sha; } catch {}
+    const r = await ghFetch(p, { method: "PUT", body: JSON.stringify({
+      message: "cache " + key, sha,
+      content: Buffer.from(JSON.stringify(data)).toString("base64") }) });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    console.log("[store] SAVED key=" + key);
+  } catch (e) { console.log("[store] put failed (ignored): " + e.message); }
+}
+
 const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
 const TRANSLATE_MODEL = "openai/gpt-oss-120b";
 
@@ -174,6 +219,16 @@ async function processJob(id, url) {
     if (isFinite(dur) && dur > MAX_SECONDS) throw new Error("video is " + Math.round(dur / 60) + " min - max is " + (MAX_SECONDS / 60) + " min");
     job.videoFile = file;
 
+    const stored = await storeGet(job.key);
+    if (stored) {
+      console.log("[store] HIT key=" + job.key + " cues=" + stored.cues.length + " (skipping transcription+translation)");
+      job.language = stored.language;
+      job.cues = stored.cues;
+      job.status = "ready";
+      return;
+    }
+    console.log("[store] MISS key=" + job.key);
+
     job.status = "transcribing";
     if (!process.env.GROQ_API_KEY) throw new Error("server is missing its transcription key (GROQ_API_KEY)");
     await run("ffmpeg", ["-y", "-v", "error", "-i", path.join(dir, file), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "libopus", "-b:a", "32k", path.join(dir, "audio.opus")]);
@@ -187,6 +242,7 @@ async function processJob(id, url) {
     job.cues = parsed.cues.map((c, k) => ({ start: c.start, end: c.end, src: c.text, en: ens[k] || "" }));
 
     job.status = "ready";
+    storePut(job.key, { key: job.key, language: job.language, title: job.title, creator: job.creator, url: job.url, saved: new Date().toISOString(), cues: job.cues });
   } catch (e) {
     job.status = "error";
     job.error = friendlyError(e);
