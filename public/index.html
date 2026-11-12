@@ -12,7 +12,7 @@
   h1 { font-size:22px; margin:6px 0 2px; }
   .sub { color:var(--muted); font-size:13px; margin-bottom:18px; }
   .row { display:flex; gap:8px; }
-  input[type=url] { flex:1; padding:12px 14px; border-radius:12px; border:1px solid #2a3644; background:var(--card); color:var(--text); font-size:15px; outline:none; }
+  input[type=url] { flex:1; min-width:0; padding:12px 14px; border-radius:12px; border:1px solid #2a3644; background:var(--card); color:var(--text); font-size:15px; outline:none; }
   input[type=url]:focus { border-color:var(--accent); }
   button { padding:12px 18px; border-radius:12px; border:0; background:var(--accent); color:#04222f; font-weight:700; font-size:15px; cursor:pointer; }
   button:disabled { opacity:.5; cursor:default; }
@@ -21,17 +21,20 @@
   .err { margin-top:16px; color:#ff8f8f; font-size:14px; white-space:pre-wrap; }
   .meta { margin:16px 0 8px; font-size:14px; color:var(--muted); }
   .meta b { color:var(--text); }
-  .player { position:relative; margin-top:8px; border-radius:14px; overflow:hidden; background:#000; }
-  video { display:block; width:100%; max-height:70vh; background:#000; }
-  .caps { position:absolute; left:0; right:0; bottom:15%; text-align:center; pointer-events:none; padding:0 10px; }
-  .cap-src, .cap-en {
-    display:table; max-width:100%; margin-left:auto; margin-right:auto;
-    padding:.16em .5em; border-radius:.45em; background:rgba(0,0,0,.84);
-    box-decoration-break:clone; -webkit-box-decoration-break:clone;
-    text-shadow:0 1px 2px rgba(0,0,0,.9); overflow-wrap:anywhere;
+  .player { margin-top:8px; border:1px solid #2a3644; border-radius:14px; overflow:hidden; background:#000; }
+  .video-frame { background:#000; }
+  video { display:block; width:100%; height:auto; max-height:60vh; max-height:60svh; object-fit:contain; background:#000; }
+  /* Captions are a separate flow row, never a layer over the lesson. */
+  .caps { position:static; min-height:140px; padding:12px 14px; text-align:center; background:var(--card); border-top:1px solid #2a3644; }
+  .caps[hidden] { display:none; }
+  .cap-src, .cap-en { margin:0; overflow-wrap:anywhere; }
+  .cap-src { font-size:clamp(17px,4.6vw,24px); font-weight:700; line-height:1.5; unicode-bidi:plaintext; }
+  .cap-en { font-size:clamp(13px,3.6vw,17px); color:#ffe9a8; line-height:1.45; margin-top:8px; }
+  .cap-en:first-child { margin-top:0; }
+  @media (max-width:600px) {
+    video { max-height:52vh; max-height:52svh; }
+    .caps { min-height:150px; }
   }
-  .cap-src { font-size:clamp(17px,4.6vw,24px); font-weight:700; line-height:1.5; direction:auto; }
-  .cap-en { font-size:clamp(13px,3.6vw,17px); color:#ffe9a8; line-height:1.45; margin-top:5px; }
   .bar { display:flex; align-items:center; justify-content:space-between; margin-top:10px; gap:8px; flex-wrap:wrap; }
   .speeds { display:flex; gap:6px; }
   .speed { padding:8px 14px; border-radius:10px; background:var(--card); color:var(--text); border:1px solid #2a3644; font-size:14px; font-weight:600; }

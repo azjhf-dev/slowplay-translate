@@ -162,10 +162,10 @@ function App() {
 
     ${ready && html`
       <div class="player">
-        <video key=${cur.id} ref=${vidRef} src=${cur.videoUrl} controls playsinline preload="auto"
-          onTimeUpdate=${onTime} onLoadedMetadata=${onLoaded} onEnded=${onEnded} onError=${onVideoError}></video>
-        <div class="caps">
-          ${cue && showSrc && html`<div class="cap-src">${cue.src}</div>`}
+        <div class="video-frame"><video key=${cur.id} ref=${vidRef} src=${cur.videoUrl} controls playsinline preload="auto"
+          onTimeUpdate=${onTime} onLoadedMetadata=${onLoaded} onEnded=${onEnded} onError=${onVideoError}></video></div>
+        <div class="caps" hidden=${!showSrc && !showEn} aria-label="Captions below video">
+          ${cue && showSrc && html`<div class="cap-src" dir="auto">${cue.src}</div>`}
           ${cue && showEn && html`<div class="cap-en">${cue.en}</div>`}
         </div>
       </div>`}
