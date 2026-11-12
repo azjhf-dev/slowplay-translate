@@ -94,20 +94,27 @@ for u in units:
         continue
     clean.append(u)
 
-# split overlong units at punctuation, time distributed by character share
+# split overlong units so no caption freezes on screen: recurse at
+# punctuation first, else split at the middle word; time is distributed
+# by character share. Whisper often returns 15-20s punctuation-free
+# segments (common in Arabic speech), which must not become one cue.
 import re
 def split_unit(u):
     dur = u["end"] - u["start"]
-    if dur <= 8 or len(u["text"]) < 40:
+    if dur <= 8:
         return [u]
     parts = [p.strip() for p in re.split(r"(?<=[.?!؟،؛…])\s+", u["text"]) if p.strip()]
     if len(parts) < 2:
-        return [u]
+        words = u["text"].split()
+        if len(words) < 4:
+            return [u]
+        mid = len(words) // 2
+        parts = [" ".join(words[:mid]), " ".join(words[mid:])]
     total = sum(len(p) for p in parts)
     out, t = [], u["start"]
     for p in parts:
         share = dur * len(p) / total
-        out.append({"start": round(t, 2), "end": round(t + share, 2), "text": p})
+        out.extend(split_unit({"start": round(t, 2), "end": round(t + share, 2), "text": p}))
         t += share
     return out
 expanded = []
