@@ -89,8 +89,9 @@ async function processJob(id, url) {
     job.videoFile = file;
 
     job.status = "transcribing";
-    await run("ffmpeg", ["-y", "-v", "error", "-i", path.join(dir, file), "-ac", "1", "-ar", "16000", path.join(dir, "audio.wav")]);
-    const tOut = await run("python3", [path.join(__dirname, "transcribe_job.py"), path.join(dir, "audio.wav"), path.join(dir, "cues.json")], { timeout: 900000 });
+    if (!process.env.GROQ_API_KEY) throw new Error("server is missing its transcription key (GROQ_API_KEY)");
+    await run("ffmpeg", ["-y", "-v", "error", "-i", path.join(dir, file), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "libopus", "-b:a", "32k", path.join(dir, "audio.opus")]);
+    const tOut = await run("python3", [path.join(__dirname, "transcribe_job.py"), path.join(dir, "audio.opus"), path.join(dir, "cues.json")], { timeout: 900000 });
     const parsed = JSON.parse(fs.readFileSync(path.join(dir, "cues.json"), "utf8"));
     if (!parsed.cues.length) throw new Error("no speech detected in this video");
     job.language = parsed.language;
@@ -104,7 +105,7 @@ async function processJob(id, url) {
     job.status = "error";
     job.error = String(e.message || e).slice(0, 400);
   } finally {
-    try { fs.unlinkSync(path.join(dir, "audio.wav")); } catch {}
+    try { fs.unlinkSync(path.join(dir, "audio.opus")); } catch {}
   }
 }
 
