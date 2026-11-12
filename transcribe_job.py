@@ -94,6 +94,27 @@ for u in units:
         continue
     clean.append(u)
 
+# split overlong units at punctuation, time distributed by character share
+import re
+def split_unit(u):
+    dur = u["end"] - u["start"]
+    if dur <= 8 or len(u["text"]) < 40:
+        return [u]
+    parts = [p.strip() for p in re.split(r"(?<=[.?!؟،؛…])\s+", u["text"]) if p.strip()]
+    if len(parts) < 2:
+        return [u]
+    total = sum(len(p) for p in parts)
+    out, t = [], u["start"]
+    for p in parts:
+        share = dur * len(p) / total
+        out.append({"start": round(t, 2), "end": round(t + share, 2), "text": p})
+        t += share
+    return out
+expanded = []
+for u in clean:
+    expanded.extend(split_unit(u))
+clean = expanded
+
 # chunk into caption cues: break at punctuation, ~9 words, ~6s
 cues, cur = [], []
 def flush():

@@ -25,34 +25,55 @@ function run(cmd, args, opts = {}) {
   });
 }
 
-async function translateBatch(texts, src, tl = "en") {
-  // batch with sentinel, fall back to per-line
+const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
+const TRANSLATE_MODEL = "openai/gpt-oss-120b";
+
+async function groqTranslate(lines, src) {
   const DELIM = "\n###\n";
+  const srcName = { ar: "Arabic" }[src] || "the source language";
+  const body = {
+    model: TRANSLATE_MODEL,
+    temperature: 0,
+    messages: [
+      { role: "system", content:
+        "You translate video caption lines from " + srcName + " to English. " +
+        "Lines are separated by " + JSON.stringify(DELIM) + ". Output the translation of each line in the same order, " +
+        "separated by exactly the same ### separator, with no numbering, no commentary, and no skipped lines. " +
+        "Keep grammar terms precise (i'rab, nasb, raf', mubtada, khabar, ism, harf). Translate meaning naturally." },
+      { role: "user", content: lines.join(DELIM) }
+    ]
+  };
+  const r = await fetch(GROQ_CHAT_URL, {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + process.env.GROQ_API_KEY,
+               "Content-Type": "application/json", "User-Agent": "curl/8.5.0" },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error("groq translate http " + r.status + ": " + (await r.text()).slice(0, 200));
+  const data = await r.json();
+  const text = (((data.choices || [])[0] || {}).message || {}).content || "";
+  return text.split(/\s*###\s*/).map(s => s.trim());
+}
+
+async function translateBatch(texts, src, tl = "en") {
+  // batch via Groq with sentinel, fall back to per-line
   const out = new Array(texts.length).fill("");
   let i = 0;
   while (i < texts.length) {
-    let j = i, chunk = "";
-    while (j < texts.length && (chunk + texts[j]).length < 3500) { chunk += (j > i ? DELIM : "") + texts[j]; j++; }
-    const url = "https://translate.googleapis.com/translate_a/single?client=gtx&dt=t" +
-      "&sl=" + encodeURIComponent(src || "auto") + "&tl=" + encodeURIComponent(tl) +
-      "&q=" + encodeURIComponent(chunk);
+    let j = i, len = 0;
+    while (j < texts.length && len + texts[j].length < 3000) { len += texts[j].length; j++; }
+    const lines = texts.slice(i, j);
     try {
-      const r = await fetch(url);
-      const data = await r.json();
-      const joined = (data[0] || []).map(seg => seg[0]).join("");
-      const parts = joined.split(/\s*###\s*/);
-      if (parts.length === j - i) {
-        for (let k = 0; k < parts.length; k++) out[i + k] = parts[k].trim();
-      } else { throw new Error("sentinel mismatch " + parts.length + " != " + (j - i)); }
+      const parts = await groqTranslate(lines, src);
+      if (parts.length === lines.length) {
+        for (let k = 0; k < parts.length; k++) out[i + k] = parts[k];
+      } else { throw new Error("sentinel mismatch " + parts.length + " != " + lines.length); }
     } catch (e) {
-      for (let k = i; k < j; k++) {
-        try {
-          const u2 = "https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=" +
-            encodeURIComponent(src || "auto") + "&tl=" + encodeURIComponent(tl) + "&q=" + encodeURIComponent(texts[k]);
-          const r2 = await fetch(u2);
-          const d2 = await r2.json();
-          out[k] = (d2[0] || []).map(seg => seg[0]).join("").trim();
-        } catch (e2) { out[k] = ""; }
+      for (let k = 0; k < lines.length; k++) {
+        for (let attempt = 0; attempt < 2 && !out[i + k]; attempt++) {
+          try { out[i + k] = (await groqTranslate([lines[k]], src))[0] || ""; }
+          catch (e2) { /* leave empty, retry once */ }
+        }
       }
     }
     i = j;
