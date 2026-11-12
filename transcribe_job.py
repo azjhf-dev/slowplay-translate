@@ -33,6 +33,7 @@ def transcribe():
     body, boundary = build_multipart(fields, "file", audio_path, "audio.opus")
     req = urllib.request.Request(API_URL, data=body, method="POST")
     req.add_header("Authorization", "Bearer " + api_key)
+    req.add_header("User-Agent", "curl/8.5.0")
     req.add_header("Content-Type", "multipart/form-data; boundary=" + boundary)
     last_err = None
     for attempt in range(4):
@@ -62,7 +63,18 @@ def transcribe():
 
 
 data = transcribe()
-language = data.get("language") or "auto"
+# Groq returns a full language name ("Arabic"); gtx needs ISO 639-1 ("ar")
+LANG_CODES = {
+    "arabic": "ar", "english": "en", "malay": "ms", "indonesian": "id",
+    "urdu": "ur", "hindi": "hi", "turkish": "tr", "persian": "fa",
+    "farsi": "fa", "french": "fr", "spanish": "es", "german": "de",
+    "chinese": "zh-CN", "japanese": "ja", "korean": "ko", "russian": "ru",
+    "bengali": "bn", "tamil": "ta", "punjabi": "pa", "pashto": "ps",
+    "swahili": "sw", "somali": "so", "hausa": "ha", "amharic": "am",
+    "portuguese": "pt", "italian": "it", "dutch": "nl", "thai": "th",
+    "vietnamese": "vi", "tagalog": "tl", "hebrew": "he", "greek": "el",
+}
+language = LANG_CODES.get((data.get("language") or "").strip().lower(), "auto")
 segments = data.get("segments") or []
 
 # flatten to word-ish units: use segments, split long ones at punctuation
