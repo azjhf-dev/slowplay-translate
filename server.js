@@ -28,6 +28,48 @@ function extractVideoUrl(raw) {
   return /^https?:\/\/[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/|$)/i.test(url) ? url : null;
 }
 
+// Canonical cache key so every link form of the same video maps to one entry.
+function canonicalKeySync(url) {
+  let u;
+  try { u = new URL(url); } catch { return null; }
+  const host = u.hostname.toLowerCase().replace(/^(www|m|mobile)\./, "");
+  const p = u.pathname;
+  let m;
+  if (/(^|\.)instagram\.com$/.test(host) && (m = p.match(/\/(?:reels?|p|tv)\/([A-Za-z0-9_-]+)/))) return "ig:" + m[1];
+  if (host === "youtu.be" && (m = p.match(/^\/([A-Za-z0-9_-]{6,})/))) return "yt:" + m[1];
+  if (/(^|\.)youtube\.com$/.test(host)) {
+    if (u.searchParams.get("v")) return "yt:" + u.searchParams.get("v");
+    if ((m = p.match(/\/(?:shorts|embed|live|v)\/([A-Za-z0-9_-]+)/))) return "yt:" + m[1];
+  }
+  if (/(^|\.)tiktok\.com$/.test(host) && (m = p.match(/\/video\/(\d+)/))) return "tt:" + m[1];
+  return null;
+}
+
+async function canonicalKey(url) {
+  let k = canonicalKeySync(url);
+  if (k) return k;
+  // short links (vt./vm.tiktok.com etc.): follow redirects once to find the real URL
+  try {
+    const r = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(8000),
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36" } });
+    k = canonicalKeySync(r.url);
+    if (k) return k;
+  } catch {}
+  return null;
+}
+
+const cache = new Map(); // canonical key -> job id
+
+function cachedJobFor(key) {
+  const id = cache.get(key);
+  const job = id && jobs.get(id);
+  if (!job || job.status === "error") { cache.delete(key); return null; }
+  if (job.status === "ready") {
+    if (!job.videoFile || !fs.existsSync(path.join(JOBS_DIR, id, job.videoFile))) { cache.delete(key); return null; }
+  }
+  return id;
+}
+
 function friendlyError(e) {
   const msg = String((e && e.message) || e).slice(0, 800);
   if (/rate.limit|\b429\b|too many requests/i.test(msg))
@@ -154,13 +196,23 @@ async function processJob(id, url) {
   }
 }
 
-app.post("/api/process", (req, res) => {
+app.post("/api/process", async (req, res) => {
   const raw = String((req.body || {}).url || "");
   const url = extractVideoUrl(raw);
   console.log("[process] raw=" + JSON.stringify(raw.slice(0, 300)) + " -> url=" + url);
   if (!url) return res.status(400).json({ error: "That doesn't look like a video link - paste the full Instagram reel, TikTok or YouTube URL on its own." });
+  const key = await canonicalKey(url);
+  if (key) {
+    const hit = cachedJobFor(key);
+    if (hit) {
+      console.log("[cache] " + (jobs.get(hit).status === "ready" ? "HIT" : "JOIN in-flight") + " key=" + key + " job=" + hit);
+      return res.json({ id: hit, cached: true });
+    }
+  }
   const id = crypto.randomBytes(6).toString("hex");
-  jobs.set(id, { status: "queued", url, created: Date.now() });
+  jobs.set(id, { status: "queued", url, key, created: Date.now() });
+  if (key) cache.set(key, id);
+  console.log("[cache] MISS key=" + key + " job=" + id);
   queue = queue.then(() => processJob(id, url)).catch(() => {});
   res.json({ id });
 });
@@ -203,6 +255,7 @@ setInterval(() => {
   const now = Date.now();
   for (const [id, job] of jobs) {
     if (now - job.created > 3 * 3600 * 1000) {
+      if (job.key && cache.get(job.key) === id) cache.delete(job.key);
       jobs.delete(id);
       fs.rmSync(path.join(JOBS_DIR, id), { recursive: true, force: true });
     }
