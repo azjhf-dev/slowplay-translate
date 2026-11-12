@@ -24,10 +24,14 @@
   .player { position:relative; margin-top:8px; border-radius:14px; overflow:hidden; background:#000; }
   video { display:block; width:100%; max-height:70vh; background:#000; }
   .caps { position:absolute; left:0; right:0; bottom:6%; text-align:center; pointer-events:none; padding:0 10px; }
-  .cap-src { font-size:clamp(17px,4.6vw,24px); font-weight:700; line-height:1.5; direction:auto;
-    text-shadow:0 1px 3px #000, 0 0 8px rgba(0,0,0,.9); }
-  .cap-en { font-size:clamp(13px,3.6vw,17px); color:#ffe9a8; line-height:1.45; margin-top:2px;
-    text-shadow:0 1px 3px #000, 0 0 8px rgba(0,0,0,.9); }
+  .cap-src, .cap-en {
+    display:table; max-width:100%; margin-left:auto; margin-right:auto;
+    padding:.16em .5em; border-radius:.45em; background:rgba(0,0,0,.84);
+    box-decoration-break:clone; -webkit-box-decoration-break:clone;
+    text-shadow:0 1px 2px rgba(0,0,0,.9); overflow-wrap:anywhere;
+  }
+  .cap-src { font-size:clamp(17px,4.6vw,24px); font-weight:700; line-height:1.5; direction:auto; }
+  .cap-en { font-size:clamp(13px,3.6vw,17px); color:#ffe9a8; line-height:1.45; margin-top:5px; }
   .bar { display:flex; align-items:center; justify-content:space-between; margin-top:10px; gap:8px; flex-wrap:wrap; }
   .speeds { display:flex; gap:6px; }
   .speed { padding:8px 14px; border-radius:10px; background:var(--card); color:var(--text); border:1px solid #2a3644; font-size:14px; font-weight:600; }
