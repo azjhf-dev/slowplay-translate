@@ -120,7 +120,7 @@ async function storeGet(key) {
     const data = JSON.parse(Buffer.from(j.content, "base64").toString("utf8"));
     // v2 = cue splitter that breaks long punctuation-free segments;
     // older entries can contain 15-20s frozen captions, treat as miss
-    return data && data.v === 2 && Array.isArray(data.cues) && data.cues.length ? data : null;
+    return data && data.v === 3 && Array.isArray(data.cues) && data.cues.length ? data : null;
   } catch (e) { console.log("[store] get failed (falling back): " + e.message); return null; }
 }
 async function storePut(key, data) {
@@ -244,7 +244,7 @@ async function processJob(id, url) {
     job.cues = parsed.cues.map((c, k) => ({ start: c.start, end: c.end, src: c.text, en: ens[k] || "" }));
 
     job.status = "ready";
-    storePut(job.key, { v: 2, key: job.key, language: job.language, title: job.title, creator: job.creator, url: job.url, saved: new Date().toISOString(), cues: job.cues });
+    storePut(job.key, { v: 3, key: job.key, language: job.language, title: job.title, creator: job.creator, url: job.url, saved: new Date().toISOString(), cues: job.cues });
   } catch (e) {
     job.status = "error";
     job.error = friendlyError(e);

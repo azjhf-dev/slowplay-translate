@@ -24,13 +24,14 @@ def build_multipart(fields, file_field, file_path, file_name):
     return bytes(body), boundary
 
 
-def transcribe():
+def transcribe(path=None):
+    path = path or audio_path
     fields = [
         ("model", MODEL),
         ("response_format", "verbose_json"),
         ("temperature", "0"),
     ]
-    body, boundary = build_multipart(fields, "file", audio_path, "audio.opus")
+    body, boundary = build_multipart(fields, "file", path, "audio.opus")
     req = urllib.request.Request(API_URL, data=body, method="POST")
     req.add_header("Authorization", "Bearer " + api_key)
     req.add_header("User-Agent", "curl/8.5.0")
@@ -76,6 +77,64 @@ LANG_CODES = {
 }
 language = LANG_CODES.get((data.get("language") or "").strip().lower(), "auto")
 segments = data.get("segments") or []
+
+# Whisper sometimes returns an empty-text segment (or no segment) spanning
+# real speech - those stretches used to vanish from the captions entirely.
+# Find stretches over GAP_SECS with no transcribed text and re-transcribe
+# just that audio slice (one extra call per gap), then merge the results.
+import subprocess, tempfile
+GAP_SECS = 2.5
+
+def find_gaps(segs):
+    gaps = []
+    prev_end = 0.0
+    for s in sorted(segs, key=lambda x: float(x.get("start", 0))):
+        st, en = float(s.get("start", 0)), float(s.get("end", 0))
+        text = (s.get("text") or "").strip()
+        if text:
+            if st - prev_end > GAP_SECS:
+                gaps.append((prev_end, st))
+            prev_end = max(prev_end, en)
+        else:
+            if en - st > GAP_SECS:
+                gaps.append((st, en))
+            prev_end = max(prev_end, en)
+    return gaps
+
+def transcribe_slice(start, end):
+    pad = 0.3
+    with tempfile.NamedTemporaryFile(suffix=".opus", delete=False) as tmp:
+        slice_path = tmp.name
+    try:
+        subprocess.run(["ffmpeg", "-y", "-v", "error",
+                        "-ss", str(max(0, start - pad)), "-to", str(end + pad),
+                        "-i", audio_path, "-ac", "1", "-ar", "16000",
+                        "-c:a", "libopus", "-b:a", "32k", slice_path], check=True)
+        d = transcribe(slice_path)
+        off = max(0, start - pad)
+        out = []
+        for s in d.get("segments") or []:
+            text = (s.get("text") or "").strip()
+            if not text:
+                continue
+            out.append({"start": float(s.get("start", 0)) + off,
+                        "end": float(s.get("end", 0)) + off, "text": text})
+        return out
+    except Exception as e:
+        print(json.dumps({"gap_retry_failed": str(e)[:200], "start": start, "end": end}), file=sys.stderr)
+        return []
+    finally:
+        try:
+            os.unlink(slice_path)
+        except Exception:
+            pass
+
+gaps = find_gaps(segments)
+for g_start, g_end in gaps:
+    segments.extend(transcribe_slice(g_start, g_end))
+if gaps:
+    segments.sort(key=lambda x: float(x.get("start", 0)))
+    print(json.dumps({"gaps_retried": len(gaps)}), file=sys.stderr)
 
 # flatten to word-ish units: use segments, split long ones at punctuation
 units = []
@@ -129,10 +188,18 @@ def flush():
         cues.append({"start": cur[0]["start"], "end": cur[-1]["end"],
                      "text": " ".join(c["text"] for c in cur).strip()})
 for u in clean:
+    # never glue a cue across a silence/untranscribed gap: that used to
+    # stretch one caption over the whole gap (a "frozen" caption)
+    if cur and (u["start"] - cur[-1]["end"]) > 1.0:
+        flush(); cur = []
+    # flush BEFORE appending once the span would pass ~6.5s, so no cue
+    # can grow to 6.5s + a whole extra unit (up to ~14s frozen on screen)
+    if cur and (u["end"] - cur[0]["start"]) > 6.5:
+        flush(); cur = []
     cur.append(u)
     txt = " ".join(c["text"] for c in cur)
     words = txt.split()
-    if (len(words) >= 10 or (u["end"] - cur[0]["start"]) > 6.5
+    if (len(words) >= 10
             or txt.rstrip().endswith((".", "?", "!", "؟", "،", "؛", "…"))):
         flush(); cur = []
 flush()
