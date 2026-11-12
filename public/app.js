@@ -23,10 +23,16 @@ function App() {
     if (!url.trim()) return;
     setState({ status: "queued" }); setCue(null); setJob(null);
     try {
-      const r = await fetch("/api/process", { method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }) });
-      const d = await r.json();
+      let r;
+      try {
+        r = await fetch("/api/process", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: url.trim() }) });
+      } catch (netErr) {
+        throw new Error("Can't reach the server - it may be waking up. Wait about 30 seconds and try again.");
+      }
+      const d = await r.json().catch(() => null);
+      if (!d) throw new Error("The server is waking up - wait about 30 seconds, then hit Go again.");
       if (!r.ok) throw new Error(d.error || "failed");
       setJob(d);
     } catch (e) { setState({ status: "error", error: e.message }); }

@@ -16,6 +16,29 @@ app.use(express.static(path.join(__dirname, "public")));
 const jobs = new Map();
 let queue = Promise.resolve();
 
+// Pull a usable URL out of whatever got pasted: strips invisible Unicode
+// (zero-width spaces, BOM), finds the first http(s) link inside surrounding
+// text, and drops trailing punctuation that rides along in chat messages.
+function extractVideoUrl(raw) {
+  if (!raw) return null;
+  const clean = String(raw).replace(/[\u200B-\u200D\u2060\uFEFF]/g, "");
+  const m = clean.match(/https?:\/\/[^\s"'<>()]+/i);
+  if (!m) return null;
+  const url = m[0].replace(/[.,;!?)\]]+$/, "");
+  return /^https?:\/\/[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/|$)/i.test(url) ? url : null;
+}
+
+function friendlyError(e) {
+  const msg = String((e && e.message) || e).slice(0, 800);
+  if (/rate.limit|\b429\b|too many requests/i.test(msg))
+    return "The video site is rate-limiting the server right now - wait a few minutes and try again.";
+  if (/login required|sign in|private|checkpoint|challenge|not authorized/i.test(msg))
+    return "That video looks private or login-only - only fully public videos work.";
+  if (/unsupported url|no video formats/i.test(msg))
+    return "That link works in a browser but has no downloadable video - try the direct reel/video URL.";
+  return msg.slice(0, 400);
+}
+
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
     execFile(cmd, args, { timeout: opts.timeout || 600000, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
@@ -124,15 +147,18 @@ async function processJob(id, url) {
     job.status = "ready";
   } catch (e) {
     job.status = "error";
-    job.error = String(e.message || e).slice(0, 400);
+    job.error = friendlyError(e);
+    console.log("[job " + id + "] error: " + String((e && e.message) || e).slice(0, 600));
   } finally {
     try { fs.unlinkSync(path.join(dir, "audio.opus")); } catch {}
   }
 }
 
 app.post("/api/process", (req, res) => {
-  const url = String((req.body || {}).url || "").trim();
-  if (!/^https?:\/\/\S+$/i.test(url)) return res.status(400).json({ error: "Paste a valid video link." });
+  const raw = String((req.body || {}).url || "");
+  const url = extractVideoUrl(raw);
+  console.log("[process] raw=" + JSON.stringify(raw.slice(0, 300)) + " -> url=" + url);
+  if (!url) return res.status(400).json({ error: "That doesn't look like a video link - paste the full Instagram reel, TikTok or YouTube URL on its own." });
   const id = crypto.randomBytes(6).toString("hex");
   jobs.set(id, { status: "queued", url, created: Date.now() });
   queue = queue.then(() => processJob(id, url)).catch(() => {});
