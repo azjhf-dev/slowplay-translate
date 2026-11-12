@@ -173,7 +173,7 @@ function App() {
       </div>
     </div>
 
-    <div class="meta" style="margin-top:20px"><b>${listName || "Playlist"}</b> · ${nReady}/${items.length} ready</div>
+    <div class="meta mt"><b>${listName || "Playlist"}</b> · ${nReady}/${items.length} ready</div>
     <div class="queue">
       ${items.map((it, i) => {
         const s = st[it.url]; const state = s ? s.status : "";
@@ -183,14 +183,14 @@ function App() {
           <span class="qx" onClick=${e => { e.stopPropagation(); remove(i); }}>×</span></div>`; })}
     </div>
 
-    <div class="row" style="margin-top:12px">
+    <div class="row mt2">
       <input type="url" placeholder="Add reel / YouTube video or playlist links" value=${adding}
         onInput=${e => setAdding(e.target.value)} onKeyDown=${e => e.key === "Enter" && add()} />
       <button onClick=${add} disabled=${!adding.trim()}>Add</button>
     </div>
     ${addMsg && html`<div class="status">${addMsg}</div>`}
     <div class="hint">Tip: 0.5x is best for shadowing. The next episode is processed while you watch this one.
-    Captions are machine-transcribed and translated. <a href="#" onClick=${e => { e.preventDefault(); reset(); }} style="color:var(--muted)">Reset playlist</a></div>
+    Captions are machine-transcribed and translated. <a href="#" onClick=${e => { e.preventDefault(); reset(); }} class="lnk">Reset playlist</a></div>
   </div>`;
 }
 
