@@ -81,6 +81,12 @@ function friendlyError(e) {
   return msg.slice(0, 400);
 }
 
+// Optional logged-in cookies (Netscape format) for sites that block servers (YouTube, Instagram).
+const COOKIE_FILE = "/tmp/cookies.txt";
+let HAVE_COOKIES = false;
+if (process.env.COOKIES_TXT) { try { fs.writeFileSync(COOKIE_FILE, process.env.COOKIES_TXT, { mode: 0o600 }); HAVE_COOKIES = true; } catch {} }
+function ytdlpArgs(a) { return HAVE_COOKIES ? ["--cookies", COOKIE_FILE, ...a] : a; }
+
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
     execFile(cmd, args, { timeout: opts.timeout || 600000, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
@@ -199,11 +205,11 @@ async function processJob(id, url) {
   fs.mkdirSync(dir, { recursive: true });
   try {
     job.status = "downloading";
-    const metaRaw = await run("yt-dlp", ["--no-playlist", "--no-warnings", "--skip-download",
-      "--print", "%(title)s | %(uploader)s | %(channel)s | %(duration)s", url]);
-    await run("yt-dlp", ["--no-playlist", "--no-warnings",
+    const metaRaw = await run("yt-dlp", ytdlpArgs(["--no-playlist", "--no-warnings", "--skip-download",
+      "--print", "%(title)s | %(uploader)s | %(channel)s | %(duration)s", url]));
+    await run("yt-dlp", ytdlpArgs(["--no-playlist", "--no-warnings",
       "-f", "best[ext=mp4][height<=720]/best[ext=mp4]/best[height<=720]/best",
-      "-o", path.join(dir, "video.%(ext)s"), url]);
+      "-o", path.join(dir, "video.%(ext)s"), url]));
     const [title, uploader, channel, duration] = metaRaw.trim().split("\n")[0].split(" | ");
     job.title = (title && title !== "NA") ? title : "";
     job.creator = [uploader, channel].find(x => x && x !== "NA") || "";
@@ -280,8 +286,8 @@ app.post("/api/expand", async (req, res) => {
   const url = extractVideoUrl(String((req.body || {}).url || ""));
   if (!url) return res.status(400).json({ error: "Not a link" });
   try {
-    const out = await run("yt-dlp", ["--flat-playlist", "--no-warnings", "--playlist-end", "60",
-      "--print", "%(id)s|%(title)s|%(url)s", url], { timeout: 60000 });
+    const out = await run("yt-dlp", ytdlpArgs(["--flat-playlist", "--no-warnings", "--playlist-end", "60",
+      "--print", "%(id)s|%(title)s|%(url)s", url]), { timeout: 60000 });
     const items = out.trim().split("\n").filter(Boolean).map(l => {
       const [id, title, u] = l.split("|");
       return { title: title && title !== "NA" ? title : id,
