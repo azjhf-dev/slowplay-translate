@@ -21,19 +21,27 @@
   .err { margin-top:16px; color:#ff8f8f; font-size:14px; white-space:pre-wrap; }
   .meta { margin:16px 0 8px; font-size:14px; color:var(--muted); }
   .meta b { color:var(--text); }
-  .player { margin-top:8px; border:1px solid #2a3644; border-radius:14px; overflow:hidden; background:#000; }
-  .video-frame { background:#000; }
-  video { display:block; width:100%; height:auto; max-height:60vh; max-height:60svh; object-fit:contain; background:#000; }
-  /* Captions are a separate flow row, never a layer over the lesson. */
-  .caps { position:static; min-height:140px; padding:12px 14px; text-align:center; background:var(--card); border-top:1px solid #2a3644; }
+  .player { position:relative; margin-top:8px; border-radius:14px; overflow:hidden; background:#000; }
+  video { display:block; width:100%; max-height:70vh; background:#000; }
+  .caps { position:absolute; left:0; right:0; bottom:15%; text-align:center; pointer-events:none; padding:0 10px; }
+  .cap-src, .cap-en {
+    display:table; max-width:100%; margin-left:auto; margin-right:auto;
+    padding:.16em .5em; border-radius:.45em; background:rgba(0,0,0,.84);
+    box-decoration-break:clone; -webkit-box-decoration-break:clone;
+    text-shadow:0 1px 2px rgba(0,0,0,.9); overflow-wrap:anywhere;
+  }
+  .cap-src { font-size:clamp(17px,4.6vw,24px); font-weight:700; line-height:1.5; direction:auto; }
+  .cap-en { font-size:clamp(13px,3.6vw,17px); color:#ffe9a8; line-height:1.45; margin-top:5px; }
   .caps[hidden] { display:none; }
-  .cap-src, .cap-en { margin:0; overflow-wrap:anywhere; }
-  .cap-src { font-size:clamp(17px,4.6vw,24px); font-weight:700; line-height:1.5; unicode-bidi:plaintext; }
-  .cap-en { font-size:clamp(13px,3.6vw,17px); color:#ffe9a8; line-height:1.45; margin-top:8px; }
-  .cap-en:first-child { margin-top:0; }
+  /* Phones: keep the complete lesson clear, with captions in a separate row. */
   @media (max-width:600px) {
-    video { max-height:52vh; max-height:52svh; }
-    .caps { min-height:150px; }
+    .player { border:1px solid #2a3644; }
+    video { height:auto; max-height:52vh; max-height:52svh; object-fit:contain; }
+    .caps { position:static; min-height:150px; padding:12px 14px; background:var(--card); border-top:1px solid #2a3644; }
+    .cap-src, .cap-en { display:block; margin:0; padding:0; border-radius:0; background:none; text-shadow:none; box-decoration-break:slice; -webkit-box-decoration-break:slice; }
+    .cap-src { unicode-bidi:plaintext; }
+    .cap-en { margin-top:8px; }
+    .cap-en:first-child { margin-top:0; }
   }
   .bar { display:flex; align-items:center; justify-content:space-between; margin-top:10px; gap:8px; flex-wrap:wrap; }
   .speeds { display:flex; gap:6px; }
